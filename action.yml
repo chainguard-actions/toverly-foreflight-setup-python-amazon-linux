@@ -1,0 +1,104 @@
+name: 'Setup python amazon linux'
+description: 'setup-python action for amazon linux self hosted runners'
+inputs:
+  python-version:
+    description: 'Version of python to be installed. Reads from .python-version if unset.'
+  python-version-file:
+    description: 'Version of python to be installed'
+    default: '.python-version'
+  cache:
+    description: >
+      [Deprecated] Used to specify whether caching is needed. Set to true, if you'd like to enable caching.
+      Current implementation uses uv which pulls in pre-compiled binaries of python thereby eliminating the
+      need to cache compiled python artifacts.
+    default: 'true'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    - name: Install uv
+      shell: bash
+      run: |
+        installation_directory="${HOME}/.setup-python-amazon-linux/uv"
+        echo "Installing uv.. installation_directory=${installation_directory}"
+        uv_version="0.5.1"
+        installer_script="$(mktemp)"
+        curl -LsSf "https://github.com/astral-sh/uv/releases/download/${uv_version}/uv-installer.sh" -o "${installer_script}"
+        if [ ! -s "${installer_script}" ] || ! head -n 1 "${installer_script}" | grep -q '^#!'; then
+          echo "Downloaded uv installer is empty or invalid" >&2
+          exit 1
+        fi
+        UV_UNMANAGED_INSTALL="${installation_directory}" bash --login "${installer_script}"
+        rm -f "${installer_script}"
+        safe_dir=$(printf '%s' "${installation_directory}" | tr -d '\n\r')
+        echo "${safe_dir}" >> "${GITHUB_PATH}"
+
+    - name: Find desired python version
+      id: find-desired-python-version
+      shell: bash
+      env:
+        INPUT_PYTHON_VERSION: ${{ inputs.python-version }}
+        INPUT_PYTHON_VERSION_FILE: ${{ inputs.python-version-file }}
+      run: |
+        raw_version=$("${GITHUB_ACTION_PATH}/find-desired-python-version.sh" "${INPUT_PYTHON_VERSION}" "${INPUT_PYTHON_VERSION_FILE}")
+        desired_python_version=$(printf '%s' "${raw_version}" | tr -d '\n\r')
+        echo "desired_python_version=${desired_python_version}" | tee -a "${GITHUB_OUTPUT}"
+
+    - name: Set installation directory
+      id: set-installation-directory
+      shell: bash
+      env:
+        DESIRED_PYTHON_VERSION: ${{ steps.find-desired-python-version.outputs.desired_python_version }}
+      run: |
+        raw_dir="${HOME}/.setup-python-amazon-linux/.python-versions/${DESIRED_PYTHON_VERSION}"
+        safe_dir=$(printf '%s' "${raw_dir}" | tr -d '\n\r')
+        echo "installation_directory=${safe_dir}" | tee -a "${GITHUB_OUTPUT}"
+
+    - id: setup-python
+      shell: bash
+      env:
+        INSTALLATION_DIRECTORY: ${{ steps.set-installation-directory.outputs.installation_directory }}
+        DESIRED_PYTHON_VERSION: ${{ steps.find-desired-python-version.outputs.desired_python_version }}
+      run: |
+        uv venv --python "${DESIRED_PYTHON_VERSION}" "${INSTALLATION_DIRECTORY}"
+
+    - name: Add python to PATH
+      shell: bash
+      env:
+        INSTALLATION_DIRECTORY: ${{ steps.set-installation-directory.outputs.installation_directory }}
+      run: |
+        safe_dir=$(printf '%s' "${INSTALLATION_DIRECTORY}" | tr -d '\n\r')
+        echo "${safe_dir}/bin" >> "${GITHUB_PATH}"
+
+        echo "The following python binaries are now available in the PATH"
+        ls "${INSTALLATION_DIRECTORY}/bin"
+
+    - name: Install pip
+      shell: bash
+      env:
+        INSTALLATION_DIRECTORY: ${{ steps.set-installation-directory.outputs.installation_directory }}
+      run: |
+        python -m ensurepip --upgrade
+        ln -sf "${INSTALLATION_DIRECTORY}/bin/pip3" "${INSTALLATION_DIRECTORY}/bin/pip"
+        pip install --upgrade pip
+
+branding:
+  icon: 'code'
+  color: 'yellow'

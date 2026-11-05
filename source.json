@@ -1,0 +1,11 @@
+{
+  "owner": "toverly-foreflight",
+  "repo": "setup-python-amazon-linux",
+  "version": "df78ddc47690122c89f20f60c92891fffb801c68",
+  "commit_sha": "df78ddc47690122c89f20f60c92891fffb801c68",
+  "url": "https://github.com/toverly-foreflight/setup-python-amazon-linux",
+  "policy_sha": "d636be7e43ef829af6e853da6b3c7566db9f72fe",
+  "test_policy_sha": "843adf9e4b8f85d0c08b27b9d0b09dd094b54702",
+  "test_agent_version": "2",
+  "harden_agent_version": "2"
+}

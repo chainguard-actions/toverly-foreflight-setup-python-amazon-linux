@@ -1,0 +1,41 @@
+name: Test basic python-version input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          python-version: '3.12'
+      - name: Assert python 3.12 is on PATH from the install dir
+        run: |
+          set -u
+          echo "which python: $(which python)"
+          ACTUAL="$(python --version 2>&1)"
+          echo "actual: $ACTUAL"
+          case "$ACTUAL" in
+            "Python 3.12."*) ;;
+            *) echo "FAIL: expected Python 3.12.x"; exit 1 ;;
+          esac
+          EXPECTED_DIR="$HOME/.setup-python-amazon-linux/.python-versions/3.12/bin"
+          if [ "$(dirname "$(which python)")" != "$EXPECTED_DIR" ]; then
+            echo "FAIL: python not resolved from $EXPECTED_DIR"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert pip and uv are available
+        run: |
+          pip --version
+          if ! pip --version | grep -q "python 3.12"; then
+            echo "FAIL: pip not bound to python 3.12"
+            exit 1
+          fi
+          if [ ! -x "$HOME/.setup-python-amazon-linux/uv/uv" ]; then
+            echo "FAIL: uv binary not installed"
+            exit 1
+          fi
+          uv --version
+          echo "PASS"

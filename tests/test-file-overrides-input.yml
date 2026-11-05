@@ -1,0 +1,22 @@
+name: Test version file takes precedence over python-version
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          python-version: '3.12'
+          python-version-file: tests/fixtures/python-version-3.11
+      - name: Assert file version (3.11) wins over input (3.12)
+        run: |
+          ACTUAL="$(python --version 2>&1)"
+          echo "actual: $ACTUAL"
+          case "$ACTUAL" in
+            "Python 3.11."*) ;;
+            *) echo "FAIL: expected Python 3.11.x from version file"; exit 1 ;;
+          esac
+          echo "PASS"

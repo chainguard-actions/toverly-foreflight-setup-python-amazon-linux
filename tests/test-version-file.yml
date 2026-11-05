@@ -1,0 +1,28 @@
+name: Test python-version-file input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          python-version-file: tests/fixtures/python-version-3.11
+      - name: Assert python 3.11 installed from version file
+        run: |
+          ACTUAL="$(python --version 2>&1)"
+          echo "actual: $ACTUAL"
+          case "$ACTUAL" in
+            "Python 3.11."*) ;;
+            *) echo "FAIL: expected Python 3.11.x"; exit 1 ;;
+          esac
+          EXPECTED_DIR="$HOME/.setup-python-amazon-linux/.python-versions/3.11/bin"
+          echo "which python: $(which python)"
+          if [ "$(dirname "$(which python)")" != "$EXPECTED_DIR" ]; then
+            echo "FAIL: python not resolved from $EXPECTED_DIR"
+            exit 1
+          fi
+          pip --version
+          echo "PASS"
